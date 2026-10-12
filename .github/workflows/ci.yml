@@ -1,10 +1,11 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [ "main", "dev" ]
   pull_request:
     branches: [ "main", "dev" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -40,3 +41,20 @@ jobs:
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
         run: php artisan test
+
+  staging:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Deploy to Staging
+        run: echo "Deploying to Staging Environment..."
+
+  production:
+    runs-on: ubuntu-latest
+    needs: staging
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Deploy Script
+        run: ./deploy.sh
