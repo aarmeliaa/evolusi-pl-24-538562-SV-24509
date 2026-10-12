@@ -19,7 +19,7 @@ class TaskTest extends TestCase
 
         // Memastikan data masuk ke database
         $this->assertDatabaseHas('tasks', [
-            'title' => 'Belajar CI/CD GitHub Actions',
+            'title' => 'Teks yang Salah Sengaja', 
         ]);
     }
 }
