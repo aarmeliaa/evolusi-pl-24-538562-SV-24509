@@ -1,38 +1,45 @@
-# Menggunakan image PHP 8.4 agar sesuai dengan kebutuhan Laravel terbaru
-FROM php:8.4-cli
+# TAHAP 1: BUILDER (Fase Pembangunan)
+FROM php:8.4.1-cli-alpine AS builder
 
-# Menginstal dependensi sistem yang dibutuhkan Composer & Laravel
-RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    libzip-dev \
-    sqlite3 \
-    && docker-php-ext-install zip pdo pdo_mysql
+# Install utilitas sistem yang dibutuhkan Composer
+RUN apk add --no-cache zip unzip git sqlite
 
-# Menyalin Composer dari image resminya
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Menentukan direktori kerja di dalam container
+COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 WORKDIR /app
 
-# STRATEGI CACHE: Salin file dependensi terlebih dahulu
+# Manfaatkan cache untuk instalasi dependensi
 COPY composer.json composer.lock ./
-
-# Instal dependensi (tahap ini akan disimpan dalam cache Docker)
 RUN composer install --no-dev --optimize-autoloader --no-scripts
 
-# Salin seluruh sisa kode aplikasi
+# Salin sisa kode aplikasi
 COPY . .
 
-# Siapkan environment dan database SQLite bawaan untuk testing
+# TAHAP 2: RUNNER (Fase Produksi Ringan)
+FROM php:8.4.1-cli-alpine
+
+RUN apk add --no-cache sqlite
+WORKDIR /app
+
+# Hanya salin hasil aplikasi yang sudah matang dari tahap builder
+COPY --from=builder /app /app
+
+# Inisialisasi basis data
 RUN cp .env.example .env \
     && rm -f bootstrap/cache/*.php \
     && touch database/database.sqlite \
     && php artisan key:generate \
     && php artisan migrate --force
 
-# Buka port 8000
+# Amankan direktori agar bisa diakses oleh user non-root
+RUN chown -R www-data:www-data /app
+
+# SYARAT KEAMANAN MUTLAK: Jangan pernah jalankan kontainer sebagai root
+USER www-data
+
+# HEALTHCHECK: Pastikan kontainer melaporkan status sehat ke Docker Daemon
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8000/api/tasks || exit 1
+
 EXPOSE 8000
 
-# Jalankan server bawaan Laravel
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
